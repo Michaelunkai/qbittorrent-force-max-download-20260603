@@ -1,5 +1,7 @@
 # qBittorrent Force Max Download
 
+GitHub repository: https://github.com/Michaelunkai/qbittorrent-force-max-download-20260603
+
 This project contains a Windows PowerShell script that pushes qBittorrent downloads toward the fastest speed the local machine, network, disk, and torrent swarm can actually provide.
 
 ## What it does
