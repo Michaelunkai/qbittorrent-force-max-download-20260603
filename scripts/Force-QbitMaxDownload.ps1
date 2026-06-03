@@ -150,6 +150,16 @@ function Set-MaxDownloadPreferences {
         send_buffer_low_watermark = 500
         socket_backlog_size = 100
         max_concurrent_http_announces = 100
+        dht_bootstrap_nodes = 'dht.libtorrent.org:25401, dht.transmissionbt.com:6881, router.bittorrent.com:6881, router.utorrent.com:6881, dht.aelitis.com:6881'
+        enable_multi_connections_from_same_ip = $true
+        limit_lan_peers = $false
+        limit_utp_rate = $false
+        reannounce_when_address_changed = $true
+        max_ratio_enabled = $true
+        max_ratio = 0
+        max_ratio_act = 0
+        max_seeding_time_enabled = $true
+        max_seeding_time = 0
     }
     $json = $prefs | ConvertTo-Json -Compress
     Invoke-QbitPost -Path 'app/setPreferences' -Body @{ json = $json }
@@ -163,7 +173,7 @@ function Get-TargetTorrents {
     if ($TargetOnlyIncomplete) {
         $selected = New-Object System.Collections.ArrayList
         foreach ($t in $all) {
-            if ([double]$t.progress -lt 1.0 -or [string]$t.state -match 'DL|meta|stalled|downloading|queued|paused|stopped') { [void]$selected.Add($t) }
+            if ([double]$t.progress -lt 1.0) { [void]$selected.Add($t) }
         }
         return $selected.ToArray()
     }
@@ -182,11 +192,42 @@ function Add-RescueTrackers {
         'udp://tracker.dler.org:6969/announce',
         'udp://open.demonii.com:1337/announce',
         'udp://tracker-udp.gbitt.info:80/announce',
+        'udp://tracker1.bt.moack.co.kr:80/announce',
+        'udp://tracker.theoks.net:6969/announce',
+        'udp://tracker.dump.cl:6969/announce',
+        'udp://tracker.bittor.pw:1337/announce',
+        'udp://bt.ktrackers.com:6666/announce',
+        'udp://explodie.org:6969/announce',
+        'udp://uploads.gamecoast.net:6969/announce',
+        'udp://tracker.filemail.com:6969/announce',
+        'udp://wepzone.net:6969/announce',
+        'udp://tracker.tryhackx.org:6969/announce',
+        'udp://isk.richardsw.club:6969/announce',
+        'udp://epider.me:6969/announce',
         'https://tracker.lilithraws.org:443/announce',
-        'https://tracker.gbitt.info:443/announce'
+        'https://tracker.gbitt.info:443/announce',
+        'https://tracker.bt4g.com:443/announce',
+        'https://tracker.cloudit.top:443/announce',
+        'https://tr.burnabyhighstar.com:443/announce'
     ) -join "`n"
     foreach ($t in $Torrents) {
         try { Invoke-QbitPost -Path 'torrents/addTrackers' -Body @{ hash = $t.hash; urls = $trackers } } catch { Write-Verbose "Tracker add failed for $($t.name): $($_.Exception.Message)" }
+    }
+}
+
+function Stop-CompletedSeeders {
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "$script:Base/api/v2/torrents/info" -WebSession $script:Session -TimeoutSec 30
+    $parsed = $response.Content | ConvertFrom-Json
+    $completed = New-Object System.Collections.ArrayList
+    foreach ($t in $parsed) {
+        if ([double]$t.progress -ge 1.0 -and [string]$t.state -match 'UP|upload|stalledUP|forcedUP|queuedUP') { [void]$completed.Add($t.hash) }
+    }
+    if ($completed.Count -gt 0) {
+        $hashes = ($completed.ToArray()) -join '|'
+        foreach ($endpoint in @('torrents/stop','torrents/pause')) {
+            try { Invoke-QbitPost -Path $endpoint -Body @{ hashes = $hashes } } catch { Write-Verbose "$endpoint completed seeders failed: $($_.Exception.Message)" }
+        }
+        Write-Host "Stopped completed seeders to keep bandwidth focused on incomplete downloads: $($completed.Count)"
     }
 }
 
@@ -258,6 +299,7 @@ if (-not $resolvedScriptPath) { $resolvedScriptPath = 'F:\study\Windows\Applicat
 Ensure-QbitForceWatchdog -ScriptPath $resolvedScriptPath
 
 Set-MaxDownloadPreferences
+Stop-CompletedSeeders
 $targets = @(Get-TargetTorrents)
 Show-Summary -Torrents $targets -Label 'before' | Out-Null
 Add-RescueTrackers -Torrents $targets
@@ -272,6 +314,7 @@ if ($Watch -or $WatchMinutes -gt 0) {
     while ((Get-Date) -lt $deadline) {
         $cycle++
         Set-MaxDownloadPreferences
+        Stop-CompletedSeeders
         $targets = @(Get-TargetTorrents)
         Add-RescueTrackers -Torrents $targets
         Force-And-Reannounce -Torrents $targets

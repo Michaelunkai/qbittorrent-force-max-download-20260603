@@ -12,7 +12,7 @@ $tokens = $null; $errors = $null
 [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$tokens, [ref]$errors) | Out-Null
 if ($errors -and $errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw "PowerShell parser errors found" }
 $content = Get-Content -LiteralPath $ScriptPath -Raw
-$required = @('app/setPreferences','torrents/setForceStart','torrents/reannounce','torrents/addTrackers','torrents/setDownloadLimit','torrents/setUploadLimit','torrents/topPrio','torrents/setAutoManagement','queueing_enabled','dl_limit','dht','pex','lsd','web_ui_username','web_ui_password','Try-NewQbitSession','adminadmin','Ensure-QbitForceWatchdog','QbitForceMaxDownloadPermanentWatchdog','schtasks.exe')
+$required = @('app/setPreferences','torrents/setForceStart','torrents/reannounce','torrents/addTrackers','torrents/setDownloadLimit','torrents/setUploadLimit','torrents/topPrio','torrents/setAutoManagement','torrents/stop','Stop-CompletedSeeders','queueing_enabled','dl_limit','dht','pex','lsd','dht_bootstrap_nodes','enable_multi_connections_from_same_ip','limit_lan_peers','limit_utp_rate','web_ui_username','web_ui_password','Try-NewQbitSession','adminadmin','Ensure-QbitForceWatchdog','QbitForceMaxDownloadPermanentWatchdog','schtasks.exe')
 foreach ($needle in $required) {
     if (-not $content.Contains($needle)) { throw "Missing required token: $needle" }
 }
