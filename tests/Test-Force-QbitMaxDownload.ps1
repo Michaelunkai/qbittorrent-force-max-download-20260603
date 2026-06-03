@@ -12,7 +12,7 @@ $tokens = $null; $errors = $null
 [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$tokens, [ref]$errors) | Out-Null
 if ($errors -and $errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw "PowerShell parser errors found" }
 $content = Get-Content -LiteralPath $ScriptPath -Raw
-$required = @('app/setPreferences','torrents/setForceStart','torrents/reannounce','torrents/addTrackers','torrents/setDownloadLimit','torrents/setUploadLimit','torrents/topPrio','torrents/setAutoManagement','queueing_enabled','dl_limit','dht','pex','lsd','web_ui_username','web_ui_password','Try-NewQbitSession','adminadmin')
+$required = @('app/setPreferences','torrents/setForceStart','torrents/reannounce','torrents/addTrackers','torrents/setDownloadLimit','torrents/setUploadLimit','torrents/topPrio','torrents/setAutoManagement','queueing_enabled','dl_limit','dht','pex','lsd','web_ui_username','web_ui_password','Try-NewQbitSession','adminadmin','Ensure-QbitForceWatchdog','QbitForceMaxDownloadPermanentWatchdog','schtasks.exe')
 foreach ($needle in $required) {
     if (-not $content.Contains($needle)) { throw "Missing required token: $needle" }
 }

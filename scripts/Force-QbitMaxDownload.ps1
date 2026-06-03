@@ -13,12 +13,13 @@ param(
     [string]$Username,
     [string]$Password = $env:QBT_PASSWORD,
     [switch]$Watch,
-    [int]$WatchMinutes = 5,
+    [int]$WatchMinutes = 0,
     [int]$PollSeconds = 15,
     [switch]$TargetOnlyIncomplete = $true,
     [switch]$NoTrackerInjection,
     [switch]$VerboseTorrentList,
-    [switch]$SkipCredentialBootstrap
+    [switch]$SkipCredentialBootstrap,
+    [switch]$SkipWatchdogInstall
 )
 
 Set-StrictMode -Version 2.0
@@ -78,6 +79,34 @@ function Set-QbitManagedCredentials {
         Write-Host "WebUI credentials auto-managed for future runs: username=$User password=adminadmin"
     } catch {
         Write-Warning "Could not update WebUI credentials through the API: $($_.Exception.Message)"
+    }
+}
+
+function Ensure-QbitForceWatchdog {
+    param([string]$ScriptPath)
+    if ($SkipWatchdogInstall -or $Watch) { return }
+    $taskName = 'QbitForceMaxDownloadPermanentWatchdog'
+    $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $wrapperDir = Join-Path $env:ProgramData 'QbitForceMaxDownload'
+    if (-not (Test-Path -LiteralPath $wrapperDir)) { New-Item -ItemType Directory -Path $wrapperDir -Force | Out-Null }
+    $wrapper = Join-Path $wrapperDir 'watchdog.cmd'
+    $cmdLine = '@echo off' + [Environment]::NewLine + '"' + $psExe + '" -NoProfile -ExecutionPolicy Bypass -File "' + $ScriptPath + '" -Watch -PollSeconds 15 -SkipWatchdogInstall'
+    Set-Content -LiteralPath $wrapper -Value $cmdLine -Encoding ASCII -Force
+    $taskRun = '"' + $wrapper + '"'
+    try {
+        & schtasks.exe /Create /TN $taskName /SC MINUTE /MO 5 /TR $taskRun /F | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "schtasks /Create failed with exit code $LASTEXITCODE" }
+        & schtasks.exe /Run /TN $taskName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "schtasks /Run failed with exit code $LASTEXITCODE" }
+        Write-Host "Permanent watchdog installed/started: $taskName"
+    } catch {
+        Write-Warning "Could not install scheduled watchdog: $($_.Exception.Message)"
+        try {
+            Start-Process -FilePath $psExe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$ScriptPath,'-Watch','-PollSeconds','15','-SkipWatchdogInstall') -WindowStyle Hidden
+            Write-Host 'Fallback hidden watchdog process started.'
+        } catch {
+            Write-Warning "Fallback watchdog start failed: $($_.Exception.Message)"
+        }
     }
 }
 
@@ -224,6 +253,9 @@ if (-not $script:Session) {
 }
 Write-Host "Connected to qBittorrent $((Get-QbitJson -Path 'app/version')) at $script:Base as $Username without prompting"
 if ($usedPassword -eq $managedPassword) { Set-QbitManagedCredentials -User 'admin' -Pass $managedPassword }
+$resolvedScriptPath = $MyInvocation.MyCommand.Path
+if (-not $resolvedScriptPath) { $resolvedScriptPath = 'F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\scripts\Force-QbitMaxDownload.ps1' }
+Ensure-QbitForceWatchdog -ScriptPath $resolvedScriptPath
 
 Set-MaxDownloadPreferences
 $targets = @(Get-TargetTorrents)

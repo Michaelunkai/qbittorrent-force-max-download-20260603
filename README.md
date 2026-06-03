@@ -19,7 +19,8 @@ This project contains a Windows PowerShell script that pushes qBittorrent downlo
 - Adds a small list of public rescue trackers to incomplete torrents unless `-NoTrackerInjection` is used.
 - Reannounces torrents immediately.
 - Re-applies the max-speed global preferences on every watch cycle.
-- Optionally keeps watching and retrying forever with `-Watch`.
+- On normal no-argument runs, installs and starts a permanent Windows Scheduled Task watchdog named `QbitForceMaxDownloadPermanentWatchdog` so the force/max-speed behavior keeps running at logon and every 5 minutes.
+- Optionally keeps watching and retrying forever in the current console with `-Watch`.
 
 Important limitation: no script can create seeders, peers, tracker responses, internet bandwidth, or disk throughput that does not exist. If a torrent has zero available seeders or a dead magnet/tracker swarm, the script can keep retrying and remove local limits, but the external swarm still controls whether metadata or pieces can arrive.
 
