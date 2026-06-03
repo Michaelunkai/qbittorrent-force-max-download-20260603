@@ -1,0 +1,43 @@
+# PowerShell caches/temp
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.err
+*.out
+
+# Local secrets / credentials
+.env
+.env.*
+*.secret
+*password*
+*token*
+
+# qBittorrent/download data must never be committed
+*.torrent
+*.fastresume
+*.parts
+*.part
+*.!qB
+*.magnet
+downloads/
+Downloads/
+data/downloads/
+
+# Build/test caches
+.cache/
+coverage/
+TestResults/
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
+build/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
