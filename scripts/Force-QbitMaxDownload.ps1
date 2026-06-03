@@ -13,8 +13,8 @@ param(
     [string]$Username,
     [string]$Password = $env:QBT_PASSWORD,
     [switch]$Watch,
-    [int]$WatchMinutes = 0,
-    [int]$PollSeconds = 20,
+    [int]$WatchMinutes = 5,
+    [int]$PollSeconds = 15,
     [switch]$TargetOnlyIncomplete = $true,
     [switch]$NoTrackerInjection,
     [switch]$VerboseTorrentList,
@@ -168,6 +168,10 @@ function Force-And-Reannounce {
     foreach ($endpoint in @('torrents/start','torrents/resume')) {
         try { Invoke-QbitPost -Path $endpoint -Body @{ hashes = $hashes } } catch { Write-Verbose "$endpoint failed: $($_.Exception.Message)" }
     }
+    try { Invoke-QbitPost -Path 'torrents/setDownloadLimit' -Body @{ hashes = $hashes; limit = 0 } } catch { Write-Verbose "setDownloadLimit failed: $($_.Exception.Message)" }
+    try { Invoke-QbitPost -Path 'torrents/setUploadLimit' -Body @{ hashes = $hashes; limit = 0 } } catch { Write-Verbose "setUploadLimit failed: $($_.Exception.Message)" }
+    try { Invoke-QbitPost -Path 'torrents/topPrio' -Body @{ hashes = $hashes } } catch { Write-Verbose "topPrio failed: $($_.Exception.Message)" }
+    try { Invoke-QbitPost -Path 'torrents/setAutoManagement' -Body @{ hashes = $hashes; enable = 'false' } } catch { Write-Verbose "setAutoManagement failed: $($_.Exception.Message)" }
     try { Invoke-QbitPost -Path 'torrents/setForceStart' -Body @{ hashes = $hashes; value = 'true' } } catch { Write-Verbose "setForceStart failed: $($_.Exception.Message)" }
     try { Invoke-QbitPost -Path 'torrents/reannounce' -Body @{ hashes = $hashes } } catch { Write-Verbose "reannounce failed: $($_.Exception.Message)" }
 }
@@ -235,6 +239,7 @@ if ($Watch -or $WatchMinutes -gt 0) {
     $cycle = 0
     while ((Get-Date) -lt $deadline) {
         $cycle++
+        Set-MaxDownloadPreferences
         $targets = @(Get-TargetTorrents)
         Add-RescueTrackers -Torrents $targets
         Force-And-Reannounce -Torrents $targets

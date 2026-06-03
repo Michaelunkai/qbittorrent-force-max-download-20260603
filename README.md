@@ -13,9 +13,12 @@ This project contains a Windows PowerShell script that pushes qBittorrent downlo
 - Enables DHT, PeX, LSD, all-tier announces, and all-tracker announces.
 - Raises connection, request queue, announce, disk cache, and I/O thread settings to high-throughput values.
 - Starts/resumes all incomplete torrents.
+- Removes per-torrent download/upload limits for every targeted torrent.
+- Moves targeted torrents to top priority and disables automatic management for them.
 - Force-starts stalled, queued, stopped, metadata, and downloading torrents.
 - Adds a small list of public rescue trackers to incomplete torrents unless `-NoTrackerInjection` is used.
 - Reannounces torrents immediately.
+- Re-applies the max-speed global preferences on every watch cycle.
 - Optionally keeps watching and retrying forever with `-Watch`.
 
 Important limitation: no script can create seeders, peers, tracker responses, internet bandwidth, or disk throughput that does not exist. If a torrent has zero available seeders or a dead magnet/tracker swarm, the script can keep retrying and remove local limits, but the external swarm still controls whether metadata or pieces can arrive.
@@ -45,7 +48,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applic
 
 ## Usage
 
-Run once with no prompt, apply the speed settings, auto-login to the local qBittorrent Web UI, force-start incomplete downloads, reannounce, and print a status report:
+Run once with no prompt, apply the speed settings, auto-login to the local qBittorrent Web UI, force-start incomplete downloads, reannounce, and keep retrying for 5 minutes by default:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\scripts\Force-QbitMaxDownload.ps1"
@@ -82,8 +85,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applic
 - `-Username`: qBittorrent Web UI username. Default: auto-detected from qBittorrent config or `admin`.
 - `-Password`: Optional qBittorrent Web UI password. Default: `$env:QBT_PASSWORD`, then managed local default `adminadmin`. The script does not prompt.
 - `-Watch`: keep retrying until all targeted torrents are no longer stalled/metadata/zero-speed.
-- `-WatchMinutes`: retry for a fixed number of minutes.
-- `-PollSeconds`: delay between watch cycles.
+- `-WatchMinutes`: retry for a fixed number of minutes. Default: `5`, so the exact script path by itself already retries instead of doing only one poke.
+- `-PollSeconds`: delay between watch cycles. Default: `15`.
 - `-NoTrackerInjection`: do not add public rescue trackers.
 - `-VerboseTorrentList`: print every targeted torrent, not only active/problem states.
 
