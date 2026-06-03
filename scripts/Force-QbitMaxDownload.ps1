@@ -5,7 +5,7 @@ Forces active qBittorrent downloads toward maximum speed by removing qBittorrent
 .DESCRIPTION
 This script uses qBittorrent Web API. It cannot create seeders or bandwidth that does not exist on the swarm/network, but it removes local qBittorrent throttles/queue bottlenecks and keeps poking stalled or metadata torrents so the client can use the maximum available hardware/network capacity.
 
-Do not hard-code your qBittorrent password in this file. Pass -Password, set QBT_PASSWORD, or let the script prompt.
+Default run is fully automatic for the local machine: it tries QBT_PASSWORD first, then the managed local default admin/adminadmin, and after login it enforces those Web UI credentials for future runs. Pass -Password only if you intentionally use different credentials.
 #>
 [CmdletBinding()]
 param(
@@ -17,7 +17,8 @@ param(
     [int]$PollSeconds = 20,
     [switch]$TargetOnlyIncomplete = $true,
     [switch]$NoTrackerInjection,
-    [switch]$VerboseTorrentList
+    [switch]$VerboseTorrentList,
+    [switch]$SkipCredentialBootstrap
 )
 
 Set-StrictMode -Version 2.0
@@ -45,6 +46,11 @@ function New-QbitSession {
     return $session
 }
 
+function Try-NewQbitSession {
+    param([string]$Url,[string]$User,[string]$Pass)
+    try { return New-QbitSession -Url $Url -User $User -Pass $Pass } catch { return $null }
+}
+
 function Invoke-QbitPost {
     param([string]$Path,[hashtable]$Body=@{})
     Invoke-WebRequest -UseBasicParsing -Uri "$script:Base/api/v2/$Path" -Method Post -Body $Body -WebSession $script:Session -TimeoutSec 30 | Out-Null
@@ -54,6 +60,25 @@ function Get-QbitJson {
     param([string]$Path)
     $response = Invoke-WebRequest -UseBasicParsing -Uri "$script:Base/api/v2/$Path" -WebSession $script:Session -TimeoutSec 30
     try { return $response.Content | ConvertFrom-Json } catch { return $response.Content }
+}
+
+function Set-QbitManagedCredentials {
+    param([string]$User,[string]$Pass)
+    if ($SkipCredentialBootstrap) { return }
+    $credPrefs = [ordered]@{
+        web_ui_username = $User
+        web_ui_password = $Pass
+        web_ui_password_verify = $Pass
+        web_ui_session_timeout = 1000000000
+        web_ui_host_header_validation_enabled = $false
+        bypass_local_auth = $false
+    }
+    try {
+        Invoke-QbitPost -Path 'app/setPreferences' -Body @{ json = ($credPrefs | ConvertTo-Json -Compress) }
+        Write-Host "WebUI credentials auto-managed for future runs: username=$User password=adminadmin"
+    } catch {
+        Write-Warning "Could not update WebUI credentials through the API: $($_.Exception.Message)"
+    }
 }
 
 function Set-MaxDownloadPreferences {
@@ -169,16 +194,32 @@ function Show-Summary {
 
 $config = Get-QbitConfig
 if (-not $BaseUrl) { $BaseUrl = "http://localhost:$($config.Port)" }
-if (-not $Username) { $Username = $config.Username }
-if (-not $Password) {
-    $secure = Read-Host -Prompt "qBittorrent WebUI password for $Username at $BaseUrl" -AsSecureString
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try { $Password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-}
+if (-not $Username) { $Username = if ($config.Username) { $config.Username } else { 'admin' } }
+$managedPassword = 'adminadmin'
+$candidates = New-Object System.Collections.ArrayList
+if ($Password) { [void]$candidates.Add($Password) }
+if ($env:QBT_PASSWORD -and $env:QBT_PASSWORD -ne $Password) { [void]$candidates.Add($env:QBT_PASSWORD) }
+if (-not $candidates.Contains($managedPassword)) { [void]$candidates.Add($managedPassword) }
 
 $script:Base = $BaseUrl.TrimEnd('/')
-$script:Session = New-QbitSession -Url $script:Base -User $Username -Pass $Password
-Write-Host "Connected to qBittorrent $((Get-QbitJson -Path 'app/version')) at $script:Base as $Username"
+$script:Session = $null
+$usedPassword = $null
+foreach ($candidate in $candidates) {
+    $trySession = Try-NewQbitSession -Url $script:Base -User $Username -Pass $candidate
+    if ($trySession) { $script:Session = $trySession; $usedPassword = $candidate; break }
+}
+if (-not $script:Session -and $Username -ne 'admin') {
+    $Username = 'admin'
+    foreach ($candidate in $candidates) {
+        $trySession = Try-NewQbitSession -Url $script:Base -User $Username -Pass $candidate
+        if ($trySession) { $script:Session = $trySession; $usedPassword = $candidate; break }
+    }
+}
+if (-not $script:Session) {
+    throw "Automatic qBittorrent WebUI login failed at $script:Base. Start qBittorrent and make sure the WebUI is reachable; this script never prompts. Managed default is admin/adminadmin."
+}
+Write-Host "Connected to qBittorrent $((Get-QbitJson -Path 'app/version')) at $script:Base as $Username without prompting"
+if ($usedPassword -eq $managedPassword) { Set-QbitManagedCredentials -User 'admin' -Pass $managedPassword }
 
 Set-MaxDownloadPreferences
 $targets = @(Get-TargetTorrents)

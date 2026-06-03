@@ -25,7 +25,7 @@ Important limitation: no script can create seeders, peers, tracker responses, in
 - Windows with qBittorrent running.
 - qBittorrent Web UI enabled.
 - PowerShell 5 or newer.
-- qBittorrent Web UI credentials.
+- qBittorrent Web UI enabled. The script is now no-prompt by default and auto-uses/manages the local Web UI credential `admin` / `adminadmin` when no password is supplied.
 
 The script auto-detects the Web UI port and username from:
 
@@ -45,7 +45,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applic
 
 ## Usage
 
-Run once, apply the speed settings, force-start incomplete downloads, reannounce, and print a status report:
+Run once with no prompt, apply the speed settings, auto-login to the local qBittorrent Web UI, force-start incomplete downloads, reannounce, and print a status report:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\scripts\Force-QbitMaxDownload.ps1"
@@ -80,7 +80,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applic
 
 - `-BaseUrl`: qBittorrent Web UI base URL. Default: auto-detected `http://localhost:<port>`.
 - `-Username`: qBittorrent Web UI username. Default: auto-detected from qBittorrent config or `admin`.
-- `-Password`: qBittorrent Web UI password. Default: `$env:QBT_PASSWORD`; if absent, the script prompts securely.
+- `-Password`: Optional qBittorrent Web UI password. Default: `$env:QBT_PASSWORD`, then managed local default `adminadmin`. The script does not prompt.
 - `-Watch`: keep retrying until all targeted torrents are no longer stalled/metadata/zero-speed.
 - `-WatchMinutes`: retry for a fixed number of minutes.
 - `-PollSeconds`: delay between watch cycles.
