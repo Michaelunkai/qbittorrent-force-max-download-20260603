@@ -31,7 +31,7 @@ foreach ($needle in @('--audit-only','--rollback','--local-only','--full-admin',
 $tray = Join-Path $root 'src\QbitMaxDownloadTray.cs'
 if (-not (Test-Path -LiteralPath $tray)) { throw "Missing tray source: $tray" }
 $trayContent = Get-Content -LiteralPath $tray -Raw
-foreach ($needle in @('NotifyIcon','ContextMenuStrip','Application.Run','CreateNoWindow = true','ProcessWindowStyle.Hidden','RedirectStandardOutput = true','RedirectStandardError = true','Force-QbitMaxDownload.ps1','-Watch','-SkipWatchdogInstall','QbitForceMaxDownloadPermanentWatchdog','schtasks.exe','/Delete /F','--stop-running','--upload-cap-kbps','--benchmark-seconds','--no-upload-cap','KillPowerShellWorkers','StopAllOptimizerActivity')) {
+foreach ($needle in @('NotifyIcon','ContextMenuStrip','Application.Run','CreateNoWindow = true','ProcessWindowStyle.Hidden','RedirectStandardOutput = true','RedirectStandardError = true','Force-QbitMaxDownload.ps1','-Watch','-SkipWatchdogInstall','QbitForceMaxDownloadPermanentWatchdog','schtasks.exe','/Delete /F','--stop-running','--upload-cap-kbps','--benchmark-seconds','--no-upload-cap','KillPowerShellWorkers','StopAllOptimizerActivity','CreatePinkQbitIcon','Color.FromArgb(255, 230, 28, 150)','DrawString("qB"','--watch-qbit-launches','--install-qbit-autostart','QbitMaxDownloadTrayQbitLaunchWatcher',"Name='qbittorrent.exe'",'StartNormalTray','StopOtherWatcherProcesses','TryKillSingleProcess')) {
     if (-not $trayContent.Contains($needle)) { throw "Tray source missing required token: $needle" }
 }
 if ($trayContent -match 'C:\\Users\\micha|Documents\\Codex|micha\\bin') {

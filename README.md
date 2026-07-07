@@ -25,8 +25,9 @@ F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\Spe
 - Adds a small list of public rescue trackers to incomplete torrents unless `-NoTrackerInjection` is used.
 - Reannounces torrents immediately.
 - Re-applies the max-speed global preferences on every watch cycle.
-- The tray executable runs hidden with no terminal, starts the engine in watch mode, writes logs under this F-drive project, and owns the worker lifecycle.
+- The tray executable runs hidden with no terminal, shows a pink qBittorrent-style tray icon, starts the engine in watch mode, writes logs under this F-drive project, and owns the worker lifecycle.
 - Exiting the tray icon stops the optimizer worker immediately and deletes the legacy scheduled watchdog named `QbitForceMaxDownloadPermanentWatchdog`.
+- The same executable can install a hidden qBittorrent launch watcher so opening qBittorrent later also opens the tray optimizer.
 - On direct script no-argument runs, installs and starts a permanent Windows Scheduled Task watchdog named `QbitForceMaxDownloadPermanentWatchdog` so the force/max-speed behavior keeps running at logon and every 5 minutes.
 - Optionally keeps watching and retrying forever in the current console with `-Watch`.
 
@@ -70,6 +71,14 @@ The tray app defaults to:
 ```
 
 Supported tray executable switches include `--watch`, `--audit-only`, `--rollback`, `--local-only`, `--full-admin`, `--no-trackers`, `--verbose-torrent-list`, `--no-upload-cap`, `--upload-cap-kbps`, `--benchmark-seconds`, `--minutes`, `--watch-minutes`, `--poll-seconds`, `--category`, `--tag`, `--base-url`, `--username`, and `--password`.
+
+Install or refresh the automatic qBittorrent launch watcher:
+
+```powershell
+F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\runtime\QbitMaxDownloadTray.exe --install-qbit-autostart
+```
+
+This registers `QbitMaxDownloadTrayQbitLaunchWatcher` and a keep-alive task. The task runs the same executable in hidden `--watch-qbit-launches` mode and starts the normal tray app whenever `qbittorrent.exe` is opened.
 
 For automated verification or emergency cleanup:
 

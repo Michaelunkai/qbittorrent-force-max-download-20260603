@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Management;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -15,6 +16,7 @@ namespace QbitMaxDownloadTray
     internal static class Program
     {
         private const string TaskName = "QbitForceMaxDownloadPermanentWatchdog";
+        private const string WatcherTaskName = "QbitMaxDownloadTrayQbitLaunchWatcher";
         private static readonly object Sync = new object();
         private static Process worker;
         private static NotifyIcon tray;
@@ -22,11 +24,28 @@ namespace QbitMaxDownloadTray
         private static string logPath;
         private static bool exiting;
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool DestroyIcon(IntPtr hIcon);
+
         [STAThread]
         private static int Main(string[] args)
         {
             scriptPath = FindScriptPath();
             logPath = Path.Combine(ProjectRootFromExecutable(), "logs", "QbitMaxDownloadTray.log");
+
+            if (args.Any(a => String.Equals(a, "--watch-qbit-launches", StringComparison.OrdinalIgnoreCase)))
+            {
+                RunQbitLaunchWatcher();
+                return 0;
+            }
+
+            if (args.Any(a => String.Equals(a, "--install-qbit-autostart", StringComparison.OrdinalIgnoreCase)))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+                InstallQbitLaunchWatcher();
+                StartQbitLaunchWatcher();
+                return 0;
+            }
 
             if (args.Any(a => String.Equals(a, "--stop-running", StringComparison.OrdinalIgnoreCase)))
             {
@@ -56,7 +75,7 @@ namespace QbitMaxDownloadTray
             menu.Items.Add("Exit", null, delegate { ExitTray(); });
 
             tray = new NotifyIcon();
-            tray.Icon = SystemIcons.Application;
+            tray.Icon = CreatePinkQbitIcon();
             tray.Text = "Qbit Max Download active";
             tray.Visible = true;
             tray.ContextMenuStrip = menu;
@@ -197,10 +216,10 @@ namespace QbitMaxDownloadTray
         private static void StopOtherTrayProcesses()
         {
             int current = Process.GetCurrentProcess().Id;
-            foreach (var proc in Process.GetProcessesByName("QbitMaxDownloadTray"))
+            foreach (var processId in FindProcessesByCommandLine("QbitMaxDownloadTray.exe", null))
             {
-                if (proc.Id == current) { continue; }
-                TryKillProcessTree(proc.Id);
+                if (processId == current || IsWatcherProcess(processId)) { continue; }
+                TryKillProcessTree(processId);
             }
         }
 
@@ -214,7 +233,7 @@ namespace QbitMaxDownloadTray
                     foreach (ManagementObject item in searcher.Get())
                     {
                         string commandLine = Convert.ToString(item["CommandLine"]);
-                        if (commandLine != null && commandLine.IndexOf(commandNeedle, StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (commandNeedle == null || (commandLine != null && commandLine.IndexOf(commandNeedle, StringComparison.OrdinalIgnoreCase) >= 0))
                         {
                             results.Add(Convert.ToInt32(item["ProcessId"]));
                         }
@@ -225,6 +244,25 @@ namespace QbitMaxDownloadTray
             {
             }
             return results;
+        }
+
+        private static bool IsWatcherProcess(int processId)
+        {
+            try
+            {
+                using (var searcher = new ManagementObjectSearcher("SELECT CommandLine FROM Win32_Process WHERE ProcessId=" + processId))
+                {
+                    foreach (ManagementObject item in searcher.Get())
+                    {
+                        string commandLine = Convert.ToString(item["CommandLine"]);
+                        return commandLine != null && commandLine.IndexOf("--watch-qbit-launches", StringComparison.OrdinalIgnoreCase) >= 0;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return false;
         }
 
         private static void KillProcessTree(Process proc)
@@ -315,6 +353,155 @@ namespace QbitMaxDownloadTray
             }
             status += Environment.NewLine + "Engine: " + scriptPath + Environment.NewLine + "Log: " + logPath;
             MessageBox.Show(status, "Qbit Max Download", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private static Icon CreatePinkQbitIcon()
+        {
+            var bmp = new Bitmap(32, 32);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                using (var outer = new SolidBrush(Color.FromArgb(255, 230, 28, 150)))
+                using (var inner = new SolidBrush(Color.FromArgb(255, 255, 108, 194)))
+                using (var white = new SolidBrush(Color.White))
+                using (var pen = new Pen(Color.White, 2.2f))
+                using (var font = new Font(FontFamily.GenericSansSerif, 9.5f, FontStyle.Bold, GraphicsUnit.Pixel))
+                {
+                    g.FillEllipse(outer, 2, 2, 28, 28);
+                    g.FillEllipse(inner, 7, 7, 18, 18);
+                    g.DrawArc(pen, 7, 7, 18, 18, 30, 295);
+                    g.DrawLine(pen, 21, 6, 25, 7);
+                    g.DrawLine(pen, 22, 10, 25, 7);
+                    g.DrawString("qB", font, white, 8, 11);
+                }
+            }
+            IntPtr handle = bmp.GetHicon();
+            Icon icon = (Icon)Icon.FromHandle(handle).Clone();
+            DestroyIcon(handle);
+            bmp.Dispose();
+            return icon;
+        }
+
+        private static void RunQbitLaunchWatcher()
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+            StopOtherWatcherProcesses();
+            AppendLog("qBittorrent launch watcher started.");
+            bool wasRunning = IsQbitRunning();
+            if (wasRunning && !IsNormalTrayRunning())
+            {
+                StartNormalTray();
+            }
+
+            while (true)
+            {
+                Thread.Sleep(2500);
+                bool isRunning = IsQbitRunning();
+                if (isRunning && !wasRunning)
+                {
+                    AppendLog("qBittorrent launch detected.");
+                    StartNormalTray();
+                }
+                wasRunning = isRunning;
+            }
+        }
+
+        private static bool IsQbitRunning()
+        {
+            try
+            {
+                using (var searcher = new ManagementObjectSearcher("SELECT ProcessId FROM Win32_Process WHERE Name='qbittorrent.exe'"))
+                {
+                    foreach (ManagementObject item in searcher.Get())
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return false;
+        }
+
+        private static bool IsNormalTrayRunning()
+        {
+            int current = Process.GetCurrentProcess().Id;
+            foreach (var processId in FindProcessesByCommandLine("QbitMaxDownloadTray.exe", null))
+            {
+                if (processId != current && !IsWatcherProcess(processId)) { return true; }
+            }
+            return false;
+        }
+
+        private static void StartNormalTray()
+        {
+            if (IsNormalTrayRunning()) { return; }
+            try
+            {
+                var psi = new ProcessStartInfo();
+                psi.FileName = Assembly.GetExecutingAssembly().Location;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                Process.Start(psi);
+                AppendLog("Started tray after qBittorrent launch.");
+            }
+            catch (Exception ex)
+            {
+                AppendLog("Failed to start tray after qBittorrent launch: " + ex.Message);
+            }
+        }
+
+        private static void InstallQbitLaunchWatcher()
+        {
+            string exe = Assembly.GetExecutingAssembly().Location;
+            string taskRun = Quote(exe) + " --watch-qbit-launches";
+            RunHidden("schtasks.exe", "/End /TN " + Quote(WatcherTaskName));
+            RunHidden("schtasks.exe", "/Delete /F /TN " + Quote(WatcherTaskName));
+            RunHidden("schtasks.exe", "/End /TN " + Quote(WatcherTaskName + " KeepAlive"));
+            RunHidden("schtasks.exe", "/Delete /F /TN " + Quote(WatcherTaskName + " KeepAlive"));
+            int createAtLogon = RunHidden("schtasks.exe", "/Create /TN " + Quote(WatcherTaskName) + " /SC ONLOGON /TR " + Quote(taskRun) + " /F");
+            int createMinute = RunHidden("schtasks.exe", "/Create /TN " + Quote(WatcherTaskName + " KeepAlive") + " /SC MINUTE /MO 1 /TR " + Quote(taskRun) + " /F");
+            AppendLog("Installed qBittorrent launch watcher tasks. onlogon=" + createAtLogon + " keepalive=" + createMinute);
+        }
+
+        private static void StartQbitLaunchWatcher()
+        {
+            StopOtherWatcherProcesses();
+            var psi = new ProcessStartInfo();
+            psi.FileName = Assembly.GetExecutingAssembly().Location;
+            psi.Arguments = "--watch-qbit-launches";
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.WindowStyle = ProcessWindowStyle.Hidden;
+            Process.Start(psi);
+            AppendLog("Started qBittorrent launch watcher process.");
+        }
+
+        private static void StopOtherWatcherProcesses()
+        {
+            int current = Process.GetCurrentProcess().Id;
+            foreach (var processId in FindProcessesByCommandLine("QbitMaxDownloadTray.exe", "--watch-qbit-launches"))
+            {
+                if (processId != current) { TryKillSingleProcess(processId); }
+            }
+        }
+
+        private static void TryKillSingleProcess(int processId)
+        {
+            try
+            {
+                using (var proc = Process.GetProcessById(processId))
+                {
+                    proc.Kill();
+                    proc.WaitForExit(3000);
+                }
+            }
+            catch
+            {
+            }
         }
 
         private static void OpenLogsFolder()
