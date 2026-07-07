@@ -2,7 +2,13 @@
 
 GitHub repository: https://github.com/Michaelunkai/qbittorrent-force-max-download-20260603
 
-This project contains a Windows PowerShell script that pushes qBittorrent downloads toward the fastest speed the local machine, network, disk, and torrent swarm can actually provide.
+This project contains a tray executable plus a Windows PowerShell engine that pushes qBittorrent downloads toward the fastest speed the local machine, network, disk, and torrent swarm can actually provide.
+
+Primary executable:
+
+```text
+F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\runtime\QbitMaxDownloadTray.exe
+```
 
 ## What it does
 
@@ -19,7 +25,9 @@ This project contains a Windows PowerShell script that pushes qBittorrent downlo
 - Adds a small list of public rescue trackers to incomplete torrents unless `-NoTrackerInjection` is used.
 - Reannounces torrents immediately.
 - Re-applies the max-speed global preferences on every watch cycle.
-- On normal no-argument runs, installs and starts a permanent Windows Scheduled Task watchdog named `QbitForceMaxDownloadPermanentWatchdog` so the force/max-speed behavior keeps running at logon and every 5 minutes.
+- The tray executable runs hidden with no terminal, starts the engine in watch mode, writes logs under this F-drive project, and owns the worker lifecycle.
+- Exiting the tray icon stops the optimizer worker immediately and deletes the legacy scheduled watchdog named `QbitForceMaxDownloadPermanentWatchdog`.
+- On direct script no-argument runs, installs and starts a permanent Windows Scheduled Task watchdog named `QbitForceMaxDownloadPermanentWatchdog` so the force/max-speed behavior keeps running at logon and every 5 minutes.
 - Optionally keeps watching and retrying forever in the current console with `-Watch`.
 
 Important limitation: no script can create seeders, peers, tracker responses, internet bandwidth, or disk throughput that does not exist. If a torrent has zero available seeders or a dead magnet/tracker swarm, the script can keep retrying and remove local limits, but the external swarm still controls whether metadata or pieces can arrive.
@@ -48,6 +56,28 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applic
 ```
 
 ## Usage
+
+Run from the tray with no console:
+
+```powershell
+F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\runtime\QbitMaxDownloadTray.exe
+```
+
+The tray app defaults to:
+
+```powershell
+-Watch -PollSeconds 15 -BenchmarkSeconds 0 -SkipWatchdogInstall
+```
+
+Supported tray executable switches include `--watch`, `--audit-only`, `--rollback`, `--local-only`, `--full-admin`, `--no-trackers`, `--verbose-torrent-list`, `--no-upload-cap`, `--upload-cap-kbps`, `--benchmark-seconds`, `--minutes`, `--watch-minutes`, `--poll-seconds`, `--category`, `--tag`, `--base-url`, `--username`, and `--password`.
+
+For automated verification or emergency cleanup:
+
+```powershell
+F:\study\Windows\Applications\Gaming\DownloadManagers\qBittorrent\Automation\SpeedOptimization\qbittorrent-force-max-download-20260603\runtime\QbitMaxDownloadTray.exe --stop-running
+```
+
+That command stops the tray process, the hidden PowerShell engine, and the legacy watchdog task. It does not close qBittorrent.
 
 Run once with no prompt, apply the speed settings, auto-login to the local qBittorrent Web UI, force-start incomplete downloads, reannounce, and keep retrying for 5 minutes by default:
 
@@ -104,6 +134,8 @@ The script prints:
 ## Important files
 
 - `scripts/Force-QbitMaxDownload.ps1`: main script to run.
+- `src/QbitMaxDownloadTray.cs`: no-console tray executable source.
+- `runtime/QbitMaxDownloadTray.exe`: compiled tray executable.
 - `tests/Test-Force-QbitMaxDownload.ps1`: parser and token verification test.
 - `.gitignore`: excludes logs, caches, temp files, local secrets, and downloaded torrent data.
 
