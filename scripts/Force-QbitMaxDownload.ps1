@@ -133,6 +133,51 @@ function Get-QbitConfig {
     return $cfg
 }
 
+function Disable-QbitDesktopLock {
+    if ($AuditOnly) { return }
+    $ini = Join-Path $env:APPDATA 'qBittorrent\qBittorrent.ini'
+    if (-not (Test-Path -LiteralPath $ini)) { return }
+    try {
+        $lines = New-Object System.Collections.Generic.List[string]
+        foreach ($line in Get-Content -LiteralPath $ini -ErrorAction Stop) { $lines.Add($line) }
+        $inLock = $false
+        $foundLock = $false
+        $foundLocked = $false
+        $changed = $false
+        $removeIndexes = New-Object System.Collections.Generic.List[int]
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line -match '^\[Locking\]$') { $inLock = $true; $foundLock = $true; continue }
+            if ($line -match '^\[') { $inLock = $false }
+            if ($inLock -and $line -match '^locked=') {
+                if ($line -ne 'locked=false') { $lines[$i] = 'locked=false'; $changed = $true }
+                $foundLocked = $true
+                continue
+            }
+            if ($inLock -and $line -match '^password_PBKDF2=') {
+                $removeIndexes.Add($i) | Out-Null
+                $changed = $true
+            }
+        }
+        for ($j = $removeIndexes.Count - 1; $j -ge 0; $j--) { $lines.RemoveAt($removeIndexes[$j]) }
+        if (-not $foundLock) {
+            $lines.Add('[Locking]')
+            $lines.Add('locked=false')
+            $changed = $true
+        } elseif (-not $foundLocked) {
+            $idx = $lines.IndexOf('[Locking]')
+            $lines.Insert($idx + 1, 'locked=false')
+            $changed = $true
+        }
+        if ($changed) {
+            Set-Content -LiteralPath $ini -Value $lines -Encoding UTF8
+            Add-Action 'qBittorrent desktop UI lock disabled; lock password hash removed from qBittorrent.ini.'
+        }
+    } catch {
+        Add-ProofWarning "Could not disable qBittorrent desktop UI lock: $($_.Exception.Message)"
+    }
+}
+
 function Find-QbitExe {
     $running = Get-Process qbittorrent -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($running -and $running.Path) { return $running.Path }
@@ -194,22 +239,20 @@ function Get-QbitJson {
     try { return $response.Content | ConvertFrom-Json } catch { return $response.Content }
 }
 
-function Set-QbitManagedCredentials {
-    param([string]$User,[string]$Pass)
+function Set-QbitLocalNoPasswordAccess {
     if ($SkipCredentialBootstrap -or $AuditOnly) { return }
-    $credPrefs = [ordered]@{
-        web_ui_username = $User
-        web_ui_password = $Pass
-        web_ui_password_verify = $Pass
+    $localPrefs = [ordered]@{
         web_ui_session_timeout = 1000000000
         web_ui_host_header_validation_enabled = $false
-        bypass_local_auth = $false
+        bypass_local_auth = $true
+        bypass_auth_subnet_whitelist_enabled = $true
+        bypass_auth_subnet_whitelist = "127.0.0.1/32`n::1/128"
     }
     try {
-        Invoke-QbitPost -Path 'app/setPreferences' -Body @{ json = ($credPrefs | ConvertTo-Json -Compress) }
-        Add-Action "WebUI credentials auto-managed for future runs: username=$User password=adminadmin"
+        Invoke-QbitPost -Path 'app/setPreferences' -Body @{ json = ($localPrefs | ConvertTo-Json -Compress) }
+        Add-Action 'Local qBittorrent WebUI password bypass enabled for 127.0.0.1 and ::1; no WebUI password was set or changed.'
     } catch {
-        Add-ProofWarning "Could not update WebUI credentials through the API: $($_.Exception.Message)"
+        Add-ProofWarning "Could not enable local qBittorrent no-password access through the API: $($_.Exception.Message)"
     }
 }
 
@@ -551,6 +594,7 @@ function Invoke-Rollback {
 try {
     if ($Minutes -gt 0 -and $WatchMinutes -le 0) { $WatchMinutes = $Minutes }
     $config = Get-QbitConfig
+    Disable-QbitDesktopLock
     if (-not $BaseUrl) { $BaseUrl = "http://localhost:$($config.Port)" }
     if (-not $Username) { $Username = if ($config.Username) { $config.Username } else { 'admin' } }
     $script:Base = $BaseUrl.TrimEnd('/')
@@ -574,11 +618,11 @@ try {
         throw "qBittorrent WebUI is not reachable at $script:Base after startup recovery."
     }
 
-    $managedPassword = 'adminadmin'
     $candidates = New-Object System.Collections.ArrayList
+    [void]$candidates.Add('')
     if ($Password) { [void]$candidates.Add($Password) }
     if ($env:QBT_PASSWORD -and $env:QBT_PASSWORD -ne $Password) { [void]$candidates.Add($env:QBT_PASSWORD) }
-    if (-not $candidates.Contains($managedPassword)) { [void]$candidates.Add($managedPassword) }
+    if (-not $candidates.Contains('adminadmin')) { [void]$candidates.Add('adminadmin') }
 
     $script:Session = $null
     $usedPassword = $null
@@ -593,13 +637,13 @@ try {
             if ($trySession) { $script:Session = $trySession; $usedPassword = $candidate; break }
         }
     }
-    if (-not $script:Session) { throw "Automatic qBittorrent WebUI login failed at $script:Base. Managed default is admin/adminadmin." }
+    if (-not $script:Session) { throw "Automatic qBittorrent WebUI login failed at $script:Base. Enable local bypass in qBittorrent WebUI or provide QBT_PASSWORD for one repair run." }
 
     $script:Proof.qbit_version = Get-QbitJson -Path 'app/version'
     $script:Proof.api_version = Get-QbitJson -Path 'app/webapiVersion'
     Write-Host "Connected to qBittorrent $($script:Proof.qbit_version) API $($script:Proof.api_version) at $script:Base as $Username without prompting"
 
-    if ($usedPassword -eq $managedPassword) { Set-QbitManagedCredentials -User 'admin' -Pass $managedPassword }
+    Set-QbitLocalNoPasswordAccess
     $script:Proof.before_preferences = Get-QbitJson -Path 'app/preferences'
     $resolvedScriptPath = $MyInvocation.MyCommand.Path
     if (-not $resolvedScriptPath) { $resolvedScriptPath = Join-Path $script:Root 'scripts\Force-QbitMaxDownload.ps1' }

@@ -38,7 +38,7 @@ Important limitation: no script can create seeders, peers, tracker responses, in
 - Windows with qBittorrent running.
 - qBittorrent Web UI enabled.
 - PowerShell 5 or newer.
-- qBittorrent Web UI enabled. The script is now no-prompt by default and auto-uses/manages the local Web UI credential `admin` / `adminadmin` when no password is supplied.
+- qBittorrent Web UI enabled. The script is no-prompt by default and enables qBittorrent's local Web UI bypass for `127.0.0.1` / `::1` instead of setting or changing a Web UI password.
 
 The script auto-detects the Web UI port and username from:
 
@@ -123,7 +123,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\study\Windows\Applic
 
 - `-BaseUrl`: qBittorrent Web UI base URL. Default: auto-detected `http://localhost:<port>`.
 - `-Username`: qBittorrent Web UI username. Default: auto-detected from qBittorrent config or `admin`.
-- `-Password`: Optional qBittorrent Web UI password. Default: `$env:QBT_PASSWORD`, then managed local default `adminadmin`. The script does not prompt.
+- `-Password`: Optional one-time qBittorrent Web UI password if local bypass is not already enabled. The script does not prompt and does not set or change qBittorrent Web UI passwords.
 - `-Watch`: keep retrying until all targeted torrents are no longer stalled/metadata/zero-speed.
 - `-WatchMinutes`: retry for a fixed number of minutes. Default: `5`, so the exact script path by itself already retries instead of doing only one poke.
 - `-PollSeconds`: delay between watch cycles. Default: `15`.
